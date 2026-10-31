@@ -400,7 +400,7 @@ kbd{font-family:var(--mono);font-size:11px;background:#eaf0ec;border:1px solid v
 <section id="panel-final" role="tabpanel" aria-labelledby="tab-final" hidden>
 <header><h1>Final Excel</h1><p>Upload raw Excel, select your client format, then download your finished workbook.</p></header>
 <div class="card"><label class="fieldlabel" for="final-client">Client format</label><select id="final-client" style="width:100%;padding:11px;margin-bottom:16px"><option value="generic">Existing earthwork format</option><option value="allcounty" selected>All County Excavation and Turf</option></select><div id="ac-options"><p class="resultnote">Creates Summary, EARTHWORK, Erosion Control, Site Demolition, Striping &amp; Signage, Site Paving (base, pea gravel, granular, limerock, subgrade) and Site-Concrete sheets.Raw cut/fill quantities are retained. Import costs are positive. Tons are rounded to 2 decimals before pricing; truck equivalents are displayed without rounding up.</p><details><summary>Review rates and conversion settings</summary><div class="calc-fields" style="margin:16px 0"><label>Tons per CY<input id="ac-density" type="number" min="0" step="any" value="1.5"></label><label>CY per truck<input id="ac-truck" type="number" min="0" step="any" value="18"></label><label>Stripping $/ton<input id="ac-strip" type="number" min="0" step="any" value="12"></label><label>Fill $/ton<input id="ac-fill" type="number" min="0" step="any" value="12"></label><label>Import $/ton<input id="ac-import" type="number" min="0" step="any" value="40"></label><label>Labour $/CY<input id="ac-labour" type="number" min="0" step="any" value="10"></label><label>Silt fence $/LF<input id="ac-silt" type="number" min="0" step="any" value="8"></label><label>Limerock $/ton<input id="ac-rock" type="number" min="0" step="any" value="52"></label><label>Subgrade $/ton<input id="ac-subgrade" type="number" min="0" step="any" value="27"></label><label>Base course $/ton<input id="ac-base" type="number" min="0" step="any" value="27"></label><label>Granular base $/ton<input id="ac-granular" type="number" min="0" step="any" value="48"></label><label>Pea gravel $/ton<input id="ac-pea" type="number" min="0" step="any" value="48"></label><label>Curb demolition $/LF<input id="ac-demo" type="number" min="0" step="any" value="30"></label></div><p class="resultnote">Other erosion items start at $0. Edit their rates in the downloaded workbook; Summary updates automatically.</p></details></div><label class="fieldlabel" for="final-file">Raw Excel workbook</label><input id="final-file" type="file" accept=".xlsx,.xls">
-<p class="resultnote">Reads surface quantities, topsoil respread, onsite/offsite areas, trench quantities and erosion phases. Other trades are not included.</p>
+<p class="resultnote">Standard Earthwork builds the EARTHWORK sheet (onsite/offsite surface earthwork, plus trench quantities if present) and the EROSION CONTROL sheet. Other trades are not included.</p>
 <label><input id="final-placeholder" type="checkbox" checked disabled> Replace numeric 0.1 earthwork quantities with 0 (both formats).</label>
 <p id="final-status" role="status">Choose a raw workbook to begin.</p><button id="final-download" class="secondary" disabled>Download Final Excel</button></div>
 <p class="resultnote">All County includes onsite, offsite and Phase 2 earthwork, erosion control and related base/subgrade Summary items. Other trades are outside this client output. No extra cut/fill factors are applied.</p><div id="final-preview"></div></section>
@@ -1582,7 +1582,7 @@ function finalModel(book,markers){badNumberCount=0;
    const category=String(get('masterformat')||get('category')||get('trade'));
    const has=k=>String(get(k)??'').trim()!=='';
     const surfaceValues=['cut','fill','strippingcut','respread'].some(has);
-    const trenchValues=['backfill','bedding'].some(has);
+    const trenchValues=!/concrete|utility|demolition|paving|furnish|asphalt/i.test(name)&&['backfill','bedding'].some(has);
     if(/erosion|sediment.*control|^grading$/i.test(name)||/erosion|sediment.*control/i.test(category)||(phase>=0&&has('erosioncontrol')&&!surfaceValues&&!trenchValues)){
     const qty=finalNumber(get('measuredquantity'));
     if(qty===null)model.warnings.push('Missing erosion quantity: '+item+' ('+name+'). Check its quantity column.');
@@ -1590,24 +1590,26 @@ function finalModel(book,markers){badNumberCount=0;
    }else if(trenchValues||/trench/i.test(name)){
     if([get('cut'),get('backfill'),get('bedding'),get('export')].some(v=>v!==''&&v!=null))model.trench.push({item,cut:earthworkNumber(get('cut')),backfill:earthworkNumber(get('backfill')),bedding:earthworkNumber(get('bedding')),exp:earthworkNumber(get('export'))});
    }else if(cut>=0&&(fill>=0||strip>=0)&&surfaceValues){
-    const c=clean(get('cut')),f=clean(get('fill')),st=earthworkNumber(get('strippingcut')),re=earthworkNumber(get('respread'));
-    const surface={item,area:/^(sqft|sf)$/i.test(String(get('unit')))?earthworkNumber(get('measuredquantity')):null,strip:st,respread:re,cut:c,fill:f,vol:clean(get('volumechangeper01ft')),description:String(get('description')).trim()};
+    const r1=v=>v===null?null:Math.round(v*10+1e-8)/10;const c=r1(clean(get('cut'))),f=r1(clean(get('fill'))),st=r1(earthworkNumber(get('strippingcut'))),re=r1(earthworkNumber(get('respread')));
+    const surface={item,area:/^(sqft|sf)$/i.test(String(get('unit')))?earthworkNumber(get('measuredquantity')):null,strip:st,respread:re,cut:c,fill:f,vol:r1(clean(get('volumechangeper01ft'))),description:String(get('description')).trim()};
     surface.net=c===null&&f===null?null:earthworkNumber(round1((surface.cut||0)-(surface.fill||0)));
     model[/offsite/i.test(item)?'offsite':'onsite'].push(surface);
    }
   }
  }
  if(!model.onsite.length&&!model.offsite.length)throw Error('No surface Earthwork table found. Upload the raw workbook with Item, Cut and Fill columns.');
- if(!model.erosion.length)model.warnings.push('No erosion items found. EROSION CONTROL will state that source data is unavailable.');
- if(!model.trench.length)model.warnings.push('No trench quantities found in the raw workbook.');if(badNumberCount)model.warnings.push(badNumberCount+' non-numeric quantity cell(s) were read as blank. Check the raw workbook.');
- const priority=r=>r.strip!==null?(/topsoil/i.test(r.item)?0:/concrete/i.test(r.item)?1:2):r.respread!==null?3:4;
+ if(badNumberCount)model.warnings.push(badNumberCount+' non-numeric quantity cell(s) were read as blank. Check the raw workbook.');
+ const priority=r=>r.strip!==null?0:r.respread!==null?3:4;
  model.onsite.sort((a,b)=>priority(a)-priority(b)||a.item.localeCompare(b.item));
  model.offsite.sort((a,b)=>a.item.localeCompare(b.item));
  model.erosion.sort((a,b)=>a.phase.localeCompare(b.phase,undefined,{numeric:true})||a.item.localeCompare(b.item));
  return model;
 }
-function finalSections(m){return [
- {title:'SURFACE EARTHWORK- ONSITE',head:['SR. NO.','ITEM','AREA (SF)','STRIPPING CUT (CY)','TOPSOIL RESPREAD (CY)','CUT (CY)','FILL (CY)','EXPORT/ - IMPORT (CY)','VOLUME CHANGE PER 0.1 FT (CY)','DESCRIPTION'],rows:m.onsite.map((r,i)=>[i+1,r.item,r.area,r.strip,r.respread,r.cut,r.fill,r.net,r.vol,r.description]),sum:[3,4,5,6,7,8,9]},
+function finalSections(m){
+ const rs=m.onsite.some(r=>r.respread!==null&&r.respread!==undefined);
+ const onsite=rs?{head:['SR. NO.','ITEM','AREA (SF)','STRIPPING CUT (CY)','TOPSOIL RESPREAD (CY)','CUT (CY)','FILL (CY)','EXPORT/ - IMPORT (CY)','VOLUME CHANGE PER 0.1 FT (CY)','DESCRIPTION'],rows:m.onsite.map((r,i)=>[i+1,r.item,r.area,r.strip,r.respread,r.cut,r.fill,r.net,r.vol,r.description]),sum:[3,4,5,6,7,8,9]}:{head:['SR. NO.','ITEM','AREA (SF)','STRIPPING CUT (CY)','CUT (CY)','FILL (CY)','EXPORT/ - IMPORT (CY)','VOLUME CHANGE PER 0.1 FT (CY)','DESCRIPTION'],rows:m.onsite.map((r,i)=>[i+1,r.item,r.area,r.strip,r.cut,r.fill,r.net,r.vol,r.description]),sum:[3,4,5,6,7,8]};
+ return [
+ Object.assign({title:'SURFACE EARTHWORK- ONSITE'},onsite),
  {title:'SURFACE EARTHWORK- OFFSITE',head:['SR. NO.','ITEM','AREA (SF)','CUT (CY)','FILL (CY)','EXPORT/ - IMPORT (CY)','VOLUME CHANGE PER 0.1 FT (CY)','DESCRIPTION'],rows:m.offsite.map((r,i)=>[i+1,r.item,r.area,r.cut,r.fill,r.net,r.vol,r.description]),sum:[3,4,5,6,7]},
  {title:'TRENCH EARTHWORK',head:['SR.NO.','ITEM','CUT (CY)','BACKFILL (CY)','BEDDING (CY)','EXPORT (CY)'],rows:m.trench.map((r,i)=>[i+1,r.item,r.cut,r.backfill,r.bedding,r.exp]),sum:[3,4,5,6]},
  {title:'EROSION CONTROL',head:['SR. NO.','ITEM','MEASURED QUANTITY','UNIT','PHASE'],rows:m.erosion.map((r,i)=>[i+1,r.item,r.qty,r.unit,r.phase]),sum:[]}].filter(s=>s.rows.length||s.title==='EROSION CONTROL');}
@@ -1624,7 +1626,8 @@ function renderFinal(){
 async function buildFinalWorkbook(model){
  const wb=new ExcelJS.Workbook();wb.creator='Earthwork Converter';wb.calcProperties.fullCalcOnLoad=true;
  const earth=wb.addWorksheet('EARTHWORK'),erosion=wb.addWorksheet('EROSION CONTROL');
- for(const ws of [earth,erosion]){ws.views=[{state:'frozen',ySplit:2}];ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};ws.columns=(ws===earth?[8,55,16,18,19,16,16,22,23,75]:[8,55,23,12,20]).map(width=>({width}));}
+ const nine=!finalSections(model)[0].head.includes('TOPSOIL RESPREAD (CY)');
+ for(const ws of [earth,erosion]){ws.views=[{state:'frozen',ySplit:2}];ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};ws.columns=(ws===earth?(nine?[8,55,16,18,16,16,22,23,75]:[8,55,16,18,19,16,16,22,23,75]):[8,55,23,12,20]).map(width=>({width}));}
  for(const s of finalSections(model)){
   const ws=s.title==='EROSION CONTROL'?erosion:earth;if(ws.rowCount)ws.addRow([]);
   const title=ws.addRow([s.title]);ws.mergeCells(title.number,1,title.number,s.head.length);title.height=25;
@@ -1670,7 +1673,7 @@ document.getElementById('final-download').addEventListener('click',async()=>{con
  const setup=document.createElement('div');setup.className='card fx-setup';setup.innerHTML='<h2>CLIENT & PRICING</h2>';layout.append(setup);
  const client=document.getElementById('final-client');const clientLabel=oldCard.querySelector('label[for="final-client"]');clientLabel.textContent='CLIENT FORMAT';setup.append(clientLabel,client,document.getElementById('ac-options'));
  const choices=document.createElement('div');choices.className='fx-client-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label','Client format');client.after(choices);client.classList.add('fx-hidden-select');
- for(const option of client.options){const b=document.createElement('button');b.type='button';b.className='fx-client-choice';const name=document.createElement('strong'),desc=document.createElement('span');name.textContent=option.value==='allcounty'?'All County': 'Standard Earthwork';desc.textContent=option.value==='allcounty'?'Summary + Earthwork + Erosion Control':'Existing report layout';b.append(name,desc);b.dataset.client=option.value;b.addEventListener('click',()=>{client.value=option.value;client.dispatchEvent(new Event('input'));});choices.append(b);}const clientGrid=document.createElement('div');clientGrid.id='fx-client-grid';choices.after(clientGrid);
+ for(const option of client.options){const b=document.createElement('button');b.type='button';b.className='fx-client-choice';const name=document.createElement('strong'),desc=document.createElement('span');name.textContent=option.value==='allcounty'?'All County': 'Standard Earthwork';desc.textContent=option.value==='allcounty'?'Summary + Earthwork + Erosion Control':'EARTHWORK + EROSION CONTROL';b.append(name,desc);b.dataset.client=option.value;b.addEventListener('click',()=>{client.value=option.value;client.dispatchEvent(new Event('input'));});choices.append(b);}const clientGrid=document.createElement('div');clientGrid.id='fx-client-grid';choices.after(clientGrid);
  const placeholder=document.getElementById('final-placeholder').parentElement;setup.append(placeholder);
  const resetRates=document.createElement('button');resetRates.type='button';resetRates.className='secondary';resetRates.textContent='Restore example rates';document.getElementById('ac-options').append(resetRates);
  const upload=document.createElement('div');upload.className='card fx-upload';upload.innerHTML='<h2>RAW WORKBOOK</h2><label class="fx-drop" id="fx-drop" for="final-file"><span class="fx-upload-icon">↑</span><strong>Drop your raw Excel here</strong><span>or click to choose a file · .xlsx / .xls</span></label><div id="fx-file" class="fx-file" hidden></div><div class="file-actions"><button type="button" id="fx-clear" class="secondary" hidden>Clear workbook</button><span>Excel conversion stays in your browser.</span></div>';
