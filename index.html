@@ -2643,7 +2643,7 @@ PF.forEach(k => { const e = q('#rb-p_' + k); const v = lsGet('rb_' + k); if (v) 
 /* --- choice button + mode switch --- */
 const rbBtn = document.createElement('button');
 rbBtn.type = 'button'; rbBtn.className = 'fx-client-choice rb-choice';
-rbBtn.innerHTML = '<strong>RB Takeoff<span class="rb-new">NEW</span></strong><span>Simplified Excel + Summary estimate from a raw takeoff</span>';
+rbBtn.innerHTML = '<strong>RB Construction<span class="rb-new">NEW</span></strong><span>Simplified Excel + Summary estimate from a raw takeoff</span>';
 rbBtn.setAttribute('aria-pressed', 'false'); choices.append(rbBtn);
 let rbOn = false;
 function setRb(on) {
